@@ -1,0 +1,242 @@
+<h1>Welcome to Unimap</h1>
+
+<div
+  id="map-container"
+  style="
+    position: relative;
+    width: 800px;
+    height: 600px;
+    overflow: hidden;
+    border: 1px solid #ccc;
+  "
+>
+  <svg
+    id="map-svg"
+    width="800"
+    height="600"
+    style="position: absolute; transform-origin: 0 0"
+  >
+    <image
+      id="map-image"
+      href="img/walls.svg"
+      width="800"
+      height="600"
+      preserveAspectRatio="xMidYMid meet"
+    />
+  </svg>
+</div>
+
+<div style="margin-top: 10px">
+  <button id="zoom-in">+</button>
+  <button id="zoom-out">-</button>
+  <button id="reset">Скинути</button>
+  <span id="scale-indicator">Масштаб: 100%</span>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Основні елементи
+    const mapContainer = document.getElementById("map-container");
+    const mapSvg = document.getElementById("map-svg");
+    const scaleIndicator = document.getElementById("scale-indicator");
+    const mapImage = document.getElementById("map-image");
+
+    // Керування
+    const zoomInBtn = document.getElementById("zoom-in");
+    const zoomOutBtn = document.getElementById("zoom-out");
+    const resetBtn = document.getElementById("reset");
+
+    // Змінні для трансформацій
+    let scale = 1;
+    const scaleStep = 0.1;
+    const minScale = 0.5;
+    const maxScale = 3;
+
+    let translateX = 0;
+    let translateY = 0;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+
+    // Функція оновлення трансформації
+    function updateTransform() {
+      mapSvg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+      scaleIndicator.textContent = `Масштаб: ${Math.round(scale * 100)}%`;
+    }
+
+    // Функція розрахунку розміщення карти по центру
+    function calculateCenterPosition() {
+      const containerRect = mapContainer.getBoundingClientRect();
+      const svgWidth = parseInt(mapSvg.getAttribute("width"));
+      const svgHeight = parseInt(mapSvg.getAttribute("height"));
+
+      return {
+        x: (containerRect.width - svgWidth) / 2,
+        y: (containerRect.height - svgHeight) / 2,
+      };
+    }
+
+    // Функція скидання карти до початкового стану
+    function resetMap() {
+      // Встановлюємо масштаб на 1 (початковий)
+      scale = 1;
+
+      // Обчислюємо центральну позицію
+      const centerPos = calculateCenterPosition();
+      translateX = centerPos.x;
+      translateY = centerPos.y;
+
+      // Оновлюємо трансформацію
+      updateTransform();
+    }
+
+    // Функція масштабування
+    function zoom(deltaScale, centerX, centerY) {
+      const oldScale = scale;
+      scale += deltaScale;
+      scale = Math.max(minScale, Math.min(maxScale, scale));
+
+      // Масштабування відносно точки
+      if (centerX !== undefined && centerY !== undefined) {
+        // Перетворюємо координати точки з координат екрану в координати SVG
+        const pointX = (centerX - translateX) / oldScale;
+        const pointY = (centerY - translateY) / oldScale;
+
+        // Обчислюємо нове положення після масштабування
+        translateX = centerX - pointX * scale;
+        translateY = centerY - pointY * scale;
+      }
+
+      updateTransform();
+    }
+
+    // Обробник прокрутки для масштабування
+    mapContainer.addEventListener("wheel", function (e) {
+      e.preventDefault();
+
+      const rect = mapContainer.getBoundingClientRect();
+      const centerX = e.clientX - rect.left;
+      const centerY = e.clientY - rect.top;
+
+      const deltaScale = e.deltaY < 0 ? scaleStep : -scaleStep;
+      zoom(deltaScale, centerX, centerY);
+    });
+
+    // Покращені обробники для перетягування
+    mapContainer.addEventListener("mousedown", function (e) {
+      if (e.button === 0) {
+        // Лівий клік
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        mapContainer.style.cursor = "grabbing";
+
+        // Запам'ятовуємо поточне положення
+        const initialTranslateX = translateX;
+        const initialTranslateY = translateY;
+
+        function onMouseMove(e) {
+          if (isDragging) {
+            // Обчислюємо дельту переміщення від початкової точки
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            // Оновлюємо положення
+            translateX = initialTranslateX + dx;
+            translateY = initialTranslateY + dy;
+
+            updateTransform();
+          }
+        }
+
+        function onMouseUp() {
+          if (isDragging) {
+            isDragging = false;
+            mapContainer.style.cursor = "grab";
+
+            // Видаляємо тимчасові обробники подій
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+          }
+        }
+
+        // Додаємо тимчасові обробники для події переміщення та відпускання
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+
+        // Запобігаємо стандартній обробці drag&drop браузера
+        e.preventDefault();
+      }
+    });
+
+    // Кнопки керування
+    zoomInBtn.addEventListener("click", function () {
+      const containerRect = mapContainer.getBoundingClientRect();
+      zoom(scaleStep, containerRect.width / 2, containerRect.height / 2);
+    });
+
+    zoomOutBtn.addEventListener("click", function () {
+      const containerRect = mapContainer.getBoundingClientRect();
+      zoom(-scaleStep, containerRect.width / 2, containerRect.height / 2);
+    });
+
+    // Оновлений обробник для кнопки скидання
+    resetBtn.addEventListener("click", resetMap);
+
+    // Встановлюємо розмір SVG для відповідності контейнеру
+    function setSvgSize() {
+      const containerRect = mapContainer.getBoundingClientRect();
+
+      // Зберігаємо пропорції зображення
+      const aspectRatio = 1; // Можна змінити на реальні пропорції
+
+      let width = containerRect.width;
+      let height = containerRect.height;
+
+      // Встановлюємо розмір SVG
+      mapSvg.setAttribute("width", width);
+      mapSvg.setAttribute("height", height);
+
+      // Встановлюємо розмір зображення
+      mapImage.setAttribute("width", width);
+      mapImage.setAttribute("height", height);
+
+      // Перераховуємо позицію для центрування
+      const centerPos = calculateCenterPosition();
+
+      // Оновлюємо позицію тільки якщо масштаб = 1 (початковий)
+      if (scale === 1) {
+        translateX = centerPos.x;
+        translateY = centerPos.y;
+        updateTransform();
+      }
+    }
+
+    // Чекаємо завантаження зображення
+    mapImage.onload = function () {
+      // Оновлюємо розміри зображення
+      setSvgSize();
+      // Скидаємо до початкового стану
+      resetMap();
+    };
+
+    // Встановлюємо початкові розміри
+    setSvgSize();
+
+    // Скидаємо карту до початкового стану при ініціалізації
+    resetMap();
+
+    // Додаємо стилі для взаємодії
+    mapContainer.style.cursor = "grab";
+
+    // Додаємо обробник зміни розміру вікна
+    window.addEventListener("resize", function () {
+      setSvgSize();
+
+      // Якщо карта в початковому масштабі, перецентруємо
+      if (scale === 1) {
+        resetMap();
+      }
+    });
+  });
+</script>
